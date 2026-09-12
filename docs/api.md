@@ -27,19 +27,19 @@ GET /api/routes
 ### Latest Price
 
 ```http
-GET /api/prices/latest?origin=NRT&destination=ICN&departureDate=2026-10-11
+GET /api/prices/latest?origin=KIX&destination=ICN&departureDate=2026-10-11
 ```
 
 ### Price History
 
 ```http
-GET /api/prices/history?origin=NRT&destination=ICN&departureDate=2026-10-11
+GET /api/prices/history?origin=KIX&destination=ICN&departureDate=2026-10-11
 ```
 
 ### Price Summary
 
 ```http
-GET /api/analytics/summary?origin=NRT&destination=ICN&departureDate=2026-10-11
+GET /api/analytics/summary?origin=KIX&destination=ICN&departureDate=2026-10-11
 ```
 
 ```json
@@ -54,7 +54,7 @@ GET /api/analytics/summary?origin=NRT&destination=ICN&departureDate=2026-10-11
 ### Airline Analytics
 
 ```http
-GET /api/analytics/airlines?origin=NRT&destination=ICN
+GET /api/analytics/airlines?origin=KIX&destination=ICN
 ```
 
 ```json
@@ -73,7 +73,7 @@ GET /api/analytics/airlines?origin=NRT&destination=ICN
 ### Purchase Timing Analytics
 
 ```http
-GET /api/analytics/purchase-timing?origin=NRT&destination=ICN
+GET /api/analytics/purchase-timing?origin=KIX&destination=ICN
 ```
 
 出発までの日数と平均価格の関係を返します。

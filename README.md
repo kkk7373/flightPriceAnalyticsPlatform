@@ -10,7 +10,7 @@
 - 出発までの日数と価格の分析
 - 所要時間、乗継回数、使用機材、手荷物情報の表示
 
-初期対象は東京（NRT）からソウル（ICN）へのEconomy便です。現在から3〜6か月先までを1日1回収集し、検証済み価格（`price_status = 'verified'`）を分析対象とします。
+現時点の対象は、関西国際空港（KIX）から仁川国際空港（ICN）へのEconomy便に限定します。現在から3〜6か月先までを1日1回収集し、検証済み価格（`price_status = 'verified'`）を分析対象とします。
 
 ## Architecture
 
@@ -90,27 +90,58 @@ flight-price-analytics/
 ├── .github/
 │   └── workflows/
 ├── docs/
-└── compose.yaml
+└── docker-compose.yml
 ```
 
 ## Local Development
 
-Frontend、Backend、Lambda、Glue ETLは、それぞれ専用のDockerfileとDev Container設定を持ちます。開発環境全体はDocker Composeで起動します。
+各サービスはDockerfileとDev Container設定を持ちます。常時起動するFrontendとBackendはDocker Composeでまとめて起動します。
 
 ```bash
 docker compose up
 ```
 
-必要なサービスだけを起動することもできます。
+FrontendのテストもCompose経由で実行します。
 
 ```bash
-docker compose up frontend backend
 docker compose run --rm frontend npm test
 ```
 
-各Dev Containerはルートの`compose.yaml`に定義された対応サービスへ接続します。ソースコードをVolume Mountし、サービスごとに独立したランタイムと依存関係を使用します。
+開発環境では、BrowserからBackend APIを直接呼び出しません。Frontendは`/api`へのリクエストをVite Proxy経由でBackendコンテナへ転送します。
 
-Frontend、Lambda、Glue ETLのDocker Imageはローカル開発専用です。本番ではFrontendは静的ファイル、LambdaはZIP、Glue ETLはPySparkスクリプトとしてデプロイします。Backendのみ本番でもDocker Imageを使用します。
+```text
+Browser
+    ↓ http://localhost:5173/api/*
+Frontend / Vite Proxy
+    ↓ http://backend:8080/api/*
+Backend / Spring Boot
+```
+
+Frontendコンテナから参照するBackend URLには、Docker Composeのサービス名を使用します。
+
+```text
+BACKEND_SERVER=http://backend:8080
+```
+
+LambdaとGlue ETLは常駐させず、開発・テストするときにそれぞれのDev Containerを起動します。
+
+```text
+Lambda Dev Container: pytest / sam local invoke
+Glue Dev Container:   pytest / spark-submit
+```
+
+ソースコードを各コンテナへVolume Mountし、サービスごとに独立したランタイムと依存関係を使用します。
+
+BackendのDockerfileは、本番Imageを作成するためのマルチステージ構成とします。その他のDockerfileは開発環境のみを定義します。
+
+| Service | Development | Build / Production |
+| --- | --- | --- |
+| Frontend | Docker Compose / Dev Container | CI/CDで静的ファイルを生成し、S3へ配置 |
+| Backend | Docker Compose / Dev Container | `build`でJARを生成し、`runtime` ImageをECSへデプロイ |
+| Lambda | 個別のDev Container | CI/CDでテストとZIP生成を行い、Lambdaへデプロイ |
+| Glue | 個別のDev Container | CI/CDでテスト後、PySparkスクリプトをGlueへアップロード |
+
+本番環境でコンテナImageそのものを実行するのはBackendだけです。
 
 BackendのテストとビルドにはMaven Wrapperを使用します。
 
@@ -133,5 +164,6 @@ cd backend
 - デプロイはGitHub Actionsから行う
 - Rawデータは再処理可能な状態で保持する
 - FrontendからAthenaを直接利用せず、任意SQLも受け付けない
-- 各サービスに専用のDockerfileとDev Container設定を用意し、開発環境はDocker Composeで起動する
+- 開発環境のBackend APIはFrontendのVite Proxy経由で呼び出す
+- FrontendとBackendはDocker Compose、LambdaとGlue ETLは個別のDev Containerで開発する
 - Frontend、Lambda、Glue ETLのコンテナはローカル開発にのみ使用する

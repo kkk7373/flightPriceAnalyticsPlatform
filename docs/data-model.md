@@ -6,7 +6,7 @@ Ignav Flight APIの1検索結果には複数の`itineraries`が含まれます�
 
 ```json
 {
-  "origin": "NRT",
+  "origin": "KIX",
   "destination": "ICN",
   "departure_date": "2026-10-11",
   "searched_at": "2026-09-11T12:00:00Z",
@@ -24,7 +24,7 @@ Ignav Flight APIの1検索結果には複数の`itineraries`が含まれます�
           {
             "marketing_carrier_code": "RS",
             "flight_number": "706",
-            "departure_airport": "NRT",
+            "departure_airport": "KIX",
             "departure_time_utc": "2026-10-11T02:40:00Z",
             "arrival_airport": "ICN",
             "arrival_time_utc": "2026-10-11T05:20:00Z",
