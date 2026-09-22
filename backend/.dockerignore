@@ -1,0 +1,6 @@
+backend/.env
+backend/.env.*
+backend/target/
+backend/.idea/
+backend/.vscode/
+**/.DS_Store

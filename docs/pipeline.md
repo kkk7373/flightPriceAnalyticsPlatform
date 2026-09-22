@@ -22,13 +22,13 @@ Glue Data Catalog
 
 ## Target Data
 
-| Item | Value |
-| --- | --- |
-| Route | KIX → ICN |
-| Departure range | 現在から3〜6か月先 |
-| Collection frequency | 1日1回 |
-| Cabin class | Economy |
-| Price status | `verified` |
+| Item                 | Value      |
+| -------------------- | ---------- |
+| Route                | KIX → ICN  |
+| Departure range      | 実行日付   |
+| Collection frequency | 1日1回     |
+| Cabin class          | Economy    |
+| Price status         | `verified` |
 
 ## Flight API
 

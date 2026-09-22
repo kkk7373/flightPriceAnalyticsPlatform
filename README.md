@@ -1,18 +1,17 @@
 # Flight Price Analytics Platform
 
-航空券価格を定期収集し、価格推移、航空会社別価格、購入タイミングごとの傾向を分析・可視化するWebアプリケーションです。
+航空券価格を収集し、Athenaで集計して表示するためのプラットフォームです。現在はLambda・Glueのデータ処理と、初期ダッシュボード用のSpring Boot APIを実装しています。Frontendは未実装です。
 
-## 主な機能
+## 現在実装している機能
 
-- 最新・最安・平均価格の表示
-- 価格履歴の可視化
-- 航空会社別の価格比較
-- 出発までの日数と価格の分析
-- 所要時間、乗継回数、使用機材、手荷物情報の表示
+- Lambdaがイベントで指定された`departure_date`の航空券を取得し、GlueがAthena用のParquetへ変換する
+- `GET /api/init`が日本時間の当日出発分と、当日を含む過去30日間の出発日別平均価格・航空会社別平均価格・出発時間帯別平均価格を返す
+- 同じ日本時間の基準日に対する`GET /api/init`の結果をアプリ内で当日中再利用し、翌日は新しい日付の結果を取得する
+- 価格がない日も30日分に含め、平均価格を`null`、オファー件数を`0`として返す
 
-現時点の対象は、関西国際空港（KIX）から仁川国際空港（ICN）へのEconomy便に限定します。現在から3〜6か月先までを1日1回収集し、検証済み価格（`price_status = 'verified'`）を分析対象とします。
+現在のAPIはKIX → ICN、JPYのみのProcessedデータを前提とします。SQLはEconomy、検証済み価格（`price_status = 'verified'`）、`price > 0`を集計対象とします。出発日はLambdaのイベントで指定され、Lambda実行日や「3〜6か月先」へ自動設定されません。Frontendでの可視化や追加分析APIは今後の開発対象です。
 
-## Architecture
+## Architecture（Frontend・本番ホスティングは構想）
 
 ```text
 EventBridge Scheduler
@@ -29,21 +28,21 @@ Amazon Athena
         ↓
 Spring Boot REST API（ECS Fargate）
         ↓
-React + TypeScript（S3 + CloudFront）
+React + TypeScript（今後実装、S3 + CloudFrontを想定）
 ```
 
-データ収集処理とWebアプリケーションは分離し、Webリクエストから外部APIを直接呼び出しません。Rawデータは再処理できるよう元の形式で保持し、分析処理はAthenaで行います。
+データ収集処理とWebアプリケーションは分離し、Webリクエストから外部APIを直接呼び出しません。Rawデータは再処理できるよう元の形式で保持し、分析処理はAthenaで行います。初期ダッシュボードはSpring Bootプロセス内のCaffeineでキャッシュします。キャッシュは再起動時に消え、複数コンテナ間では共有されません。
 
 ## Technology Stack
 
 | Area | Technologies |
 | --- | --- |
-| Frontend | React, TypeScript, Vite, Docker（ローカル開発のみ） |
+| Frontend | React, TypeScript, Vite（今後実装） |
 | Backend | Java, Spring Boot, Maven, Docker |
 | Data pipeline | Python, PySpark, Docker（ローカル開発のみ）, AWS Lambda, EventBridge Scheduler, AWS Glue |
 | Storage / Analytics | Amazon S3, Apache Parquet, Glue Data Catalog, Athena |
-| Hosting | S3, CloudFront, ECS Fargate, ALB, ECR |
-| CI/CD / Monitoring | GitHub Actions, CloudWatch |
+| Hosting | S3, CloudFront, ECS Fargate, ALB, ECR（構想） |
+| CI/CD / Monitoring | GitHub Actions（構想）, CloudWatch |
 
 ## Repository Structure
 
@@ -59,18 +58,14 @@ flight-price-analytics/
 │   └── glue/
 │       └── devcontainer.json
 ├── frontend/
-│   ├── src/
-│   ├── package.json
-│   ├── Dockerfile
-│   └── .dockerignore
+│   └── Dockerfile
 ├── backend/
-│   ├── src/
-│   ├── pom.xml
-│   ├── mvnw
-│   ├── mvnw.cmd
-│   ├── .mvn/
-│   ├── Dockerfile
-│   └── .dockerignore
+│   ├── backend/
+│   │   ├── src/
+│   │   ├── pom.xml
+│   │   ├── mvnw
+│   │   └── .mvn/
+│   └── Dockerfile
 ├── lambdas/
 │   └── flight-fetcher/
 │       ├── src/
@@ -95,33 +90,14 @@ flight-price-analytics/
 
 ## Local Development
 
-各サービスはDockerfileとDev Container設定を持ちます。常時起動するFrontendとBackendはDocker Composeでまとめて起動します。
+Backendのテストは`backend/backend`で実行します。下記のリージョンとS3 URIは、AWSへ接続しない単体テスト用のダミー設定です。
 
 ```bash
-docker compose up
+cd backend/backend
+AWS_REGION=ap-northeast-1 ATHENA_OUTPUT_LOCATION=s3://example-results/ sh ./mvnw test
 ```
 
-FrontendのテストもCompose経由で実行します。
-
-```bash
-docker compose run --rm frontend npm test
-```
-
-開発環境では、BrowserからBackend APIを直接呼び出しません。Frontendは`/api`へのリクエストをVite Proxy経由でBackendコンテナへ転送します。
-
-```text
-Browser
-    ↓ http://localhost:5173/api/*
-Frontend / Vite Proxy
-    ↓ http://backend:8080/api/*
-Backend / Spring Boot
-```
-
-Frontendコンテナから参照するBackend URLには、Docker Composeのサービス名を使用します。
-
-```text
-BACKEND_SERVER=http://backend:8080
-```
+ローカルから実際のAthenaを呼ぶ場合は、有効なAWS認証情報・リージョン・クエリ結果出力先が必要です。ComposeではBackendコンテナに`backend/backend/.env`と読み取り専用の`~/.aws`を渡します。FrontendのアプリケーションとVite Proxyはまだ実装していません。
 
 LambdaとGlue ETLは常駐させず、開発・テストするときにそれぞれのDev Containerを起動します。
 
@@ -130,25 +106,24 @@ Lambda Dev Container: pytest / sam local invoke
 Glue Dev Container:   pytest / spark-submit
 ```
 
-ソースコードを各コンテナへVolume Mountし、サービスごとに独立したランタイムと依存関係を使用します。
+ソースコードを各コンテナへVolume Mountし、サービスごとに独立したランタイムと依存関係を使用する構成です。
 
 BackendのDockerfileは、本番Imageを作成するためのマルチステージ構成とします。その他のDockerfileは開発環境のみを定義します。
 
 | Service | Development | Build / Production |
 | --- | --- | --- |
-| Frontend | Docker Compose / Dev Container | CI/CDで静的ファイルを生成し、S3へ配置 |
-| Backend | Docker Compose / Dev Container | `build`でJARを生成し、`runtime` ImageをECSへデプロイ |
+| Frontend | Docker Compose / Dev Container（今後） | CI/CDで静的ファイルを生成し、S3へ配置（構想） |
+| Backend | Docker Compose / Dev Container | `build`でJARを生成し、`runtime` ImageをECSへデプロイ（構想） |
 | Lambda | 個別のDev Container | CI/CDでテストとZIP生成を行い、Lambdaへデプロイ |
 | Glue | 個別のDev Container | CI/CDでテスト後、PySparkスクリプトをGlueへアップロード |
 
 本番環境でコンテナImageそのものを実行するのはBackendだけです。
 
-BackendのテストとビルドにはMaven Wrapperを使用します。
+Backendのテストには上記のコマンドを使用します。JARだけをビルドする場合はMaven Wrapperで以下を実行します。
 
 ```bash
-cd backend
-./mvnw test
-./mvnw clean package
+cd backend/backend
+sh ./mvnw -DskipTests package
 ```
 
 ## Documentation
@@ -164,6 +139,6 @@ cd backend
 - デプロイはGitHub Actionsから行う
 - Rawデータは再処理可能な状態で保持する
 - FrontendからAthenaを直接利用せず、任意SQLも受け付けない
-- 開発環境のBackend APIはFrontendのVite Proxy経由で呼び出す
-- FrontendとBackendはDocker Compose、LambdaとGlue ETLは個別のDev Containerで開発する
+- Frontend実装後は、開発環境のBackend APIをVite Proxy経由で呼び出す
+- Frontend実装後はFrontendとBackendをDocker Composeでまとめ、LambdaとGlue ETLは個別のDev Containerで開発する
 - Frontend、Lambda、Glue ETLのコンテナはローカル開発にのみ使用する
