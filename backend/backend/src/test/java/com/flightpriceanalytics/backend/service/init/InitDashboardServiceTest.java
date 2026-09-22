@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import com.flightpriceanalytics.backend.dto.InitResponse;
 import com.flightpriceanalytics.backend.service.athena.AthenaQueryService;
+import com.flightpriceanalytics.backend.service.athena.AthenaResultException;
 import com.flightpriceanalytics.backend.util.SqlResourceLoader;
 
 class InitDashboardServiceTest {
@@ -138,7 +139,7 @@ class InitDashboardServiceTest {
             }
         };
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
+        AthenaResultException error = assertThrows(AthenaResultException.class,
                 () -> new InitDashboardService(queryService, new SqlResourceLoader())
                         .initDashboard(LocalDate.of(2026, 9, 22)));
 

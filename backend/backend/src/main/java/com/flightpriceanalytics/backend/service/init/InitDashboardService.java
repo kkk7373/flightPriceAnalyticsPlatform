@@ -19,6 +19,7 @@ import com.flightpriceanalytics.backend.dto.InitResponse.DailyPrice;
 import com.flightpriceanalytics.backend.dto.InitResponse.DepartureTimeBand;
 import com.flightpriceanalytics.backend.dto.InitResponse.Today;
 import com.flightpriceanalytics.backend.service.athena.AthenaQueryService;
+import com.flightpriceanalytics.backend.service.athena.AthenaResultException;
 import com.flightpriceanalytics.backend.util.SqlResourceLoader;
 
 @Service
@@ -66,7 +67,7 @@ public class InitDashboardService {
         List<Today> results = athenaQueryService.athenaExecute(
                 sql, List.of(dateParameter(currentDate)), mapper);
         if (results.isEmpty()) {
-            throw new IllegalStateException("Today query returned no aggregate row");
+            throw new AthenaResultException("Today query returned no aggregate row");
         }
         return results.getFirst();
     }

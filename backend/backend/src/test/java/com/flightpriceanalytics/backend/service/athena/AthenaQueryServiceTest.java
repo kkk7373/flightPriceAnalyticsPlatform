@@ -35,6 +35,7 @@ import software.amazon.awssdk.services.athena.model.ResultSetMetadata;
 import software.amazon.awssdk.services.athena.model.Row;
 import software.amazon.awssdk.services.athena.model.StartQueryExecutionRequest;
 import software.amazon.awssdk.services.athena.model.StartQueryExecutionResponse;
+import software.amazon.awssdk.services.athena.model.StopQueryExecutionRequest;
 import software.amazon.awssdk.services.athena.paginators.GetQueryResultsIterable;
 
 class AthenaQueryServiceTest {
@@ -103,7 +104,7 @@ class AthenaQueryServiceTest {
         when(client.getQueryExecution(any(GetQueryExecutionRequest.class)))
                 .thenReturn(execution(state));
 
-        assertThrows(RuntimeException.class,
+        assertThrows(AthenaQueryException.class,
                 () -> service.athenaExecute("SELECT 1", List.of(), values -> values));
         verify(client, never()).getQueryResultsPaginator(any(GetQueryResultsRequest.class));
     }
@@ -117,10 +118,46 @@ class AthenaQueryServiceTest {
         when(client.getQueryExecution(any(GetQueryExecutionRequest.class)))
                 .thenReturn(execution(QueryExecutionState.RUNNING));
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
+        AthenaQueryTimeoutException error = assertThrows(AthenaQueryTimeoutException.class,
                 () -> service.athenaExecute("SELECT 1", List.of(), values -> values));
         assertEquals("Athena query timed out", error.getMessage());
         verify(client, never()).getQueryResultsPaginator(any(GetQueryResultsRequest.class));
+        verify(client).stopQueryExecution(any(StopQueryExecutionRequest.class));
+    }
+
+    @Test
+    void preservesTimeoutWhenStoppingQueryFails() {
+        AthenaClient client = mock(AthenaClient.class);
+        AthenaQueryService service = service(client, Duration.ZERO);
+        when(client.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenReturn(StartQueryExecutionResponse.builder().queryExecutionId("query-stop-fails").build());
+        when(client.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(execution(QueryExecutionState.RUNNING));
+        when(client.stopQueryExecution(any(StopQueryExecutionRequest.class)))
+                .thenThrow(AthenaException.builder().message("Stop failed").build());
+
+        assertThrows(AthenaQueryTimeoutException.class,
+                () -> service.athenaExecute("SELECT 1", List.of(), values -> values));
+    }
+
+    @Test
+    void wrapsInvalidResultMappingAsAthenaFailure() {
+        AthenaClient client = mock(AthenaClient.class);
+        AthenaQueryService service = service(client, Duration.ofSeconds(30));
+        when(client.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenReturn(StartQueryExecutionResponse.builder().queryExecutionId("query-invalid-row").build());
+        when(client.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(execution(QueryExecutionState.SUCCEEDED));
+        List<ColumnInfo> columns = List.of(ColumnInfo.builder().name("amount").type("varchar").build());
+        when(client.getQueryResultsPaginator(any(GetQueryResultsRequest.class)))
+                .thenAnswer(invocation -> new GetQueryResultsIterable(client, invocation.getArgument(0)));
+        when(client.getQueryResults(any(GetQueryResultsRequest.class)))
+                .thenReturn(page(columns, row("amount"), row("not-a-number")));
+
+        AthenaResultException error = assertThrows(AthenaResultException.class,
+                () -> service.athenaExecute("SELECT amount FROM prices", List.of(),
+                        values -> Long.parseLong(values.get("amount"))));
+        assertTrue(error.getCause() instanceof NumberFormatException);
     }
 
     @Test

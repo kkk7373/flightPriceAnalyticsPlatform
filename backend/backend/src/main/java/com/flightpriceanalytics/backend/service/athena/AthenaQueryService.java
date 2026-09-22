@@ -7,8 +7,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.athena.AthenaClient;
 import software.amazon.awssdk.services.athena.model.ColumnInfo;
 import software.amazon.awssdk.services.athena.model.Row;
@@ -21,10 +24,13 @@ import software.amazon.awssdk.services.athena.model.QueryExecutionContext;
 import software.amazon.awssdk.services.athena.model.QueryExecutionState;
 import software.amazon.awssdk.services.athena.model.ResultConfiguration;
 import software.amazon.awssdk.services.athena.model.StartQueryExecutionRequest;
+import software.amazon.awssdk.services.athena.model.StopQueryExecutionRequest;
 import software.amazon.awssdk.services.athena.paginators.GetQueryResultsIterable;
 
 @Service 
 public class AthenaQueryService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AthenaQueryService.class);
 
     private final AthenaClient athenaClient;
     private final AthenaProperties properties;
@@ -37,9 +43,15 @@ public class AthenaQueryService {
     public <T> List<T> athenaExecute(String sql, List<String> parameters, Function<Map<String, String>, T> mapper)throws InterruptedException{
         String queryExecutionId = submitQuery(sql,parameters);
         waitForQueryToComplete(queryExecutionId);
-        return processResultRows(queryExecutionId).stream()
-                .map(mapper)
-                .toList();
+        try {
+            return processResultRows(queryExecutionId).stream()
+                    .map(mapper)
+                    .toList();
+        } catch (SdkException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new AthenaResultException("Athena result could not be processed", exception);
+        }
     }
     private String submitQuery(String sql, List<String> parameters) {
     StartQueryExecutionRequest request = StartQueryExecutionRequest.builder()
@@ -59,34 +71,51 @@ public class AthenaQueryService {
     
 
     // Wait for an Amazon Athena query to complete, fail or to be cancelled.
-    private void waitForQueryToComplete(String queryExecutionId)
-            throws InterruptedException {
-        GetQueryExecutionRequest getQueryExecutionRequest = GetQueryExecutionRequest.builder()
+    private void waitForQueryToComplete(String queryExecutionId) throws InterruptedException {
+        try{
+            GetQueryExecutionRequest getQueryExecutionRequest = GetQueryExecutionRequest.builder()
                 .queryExecutionId(queryExecutionId)
                 .build();
 
-        GetQueryExecutionResponse getQueryExecutionResponse;
-        boolean isQueryStillRunning = true;
-        long startedAt = System.nanoTime();
+            GetQueryExecutionResponse getQueryExecutionResponse;
+            boolean isQueryStillRunning = true;
+            long startedAt = System.nanoTime();
 
-        while (isQueryStillRunning) {
-            getQueryExecutionResponse = athenaClient.getQueryExecution(getQueryExecutionRequest);
-            String queryState = getQueryExecutionResponse.queryExecution().status().state().toString();
-            if (queryState.equals(QueryExecutionState.FAILED.toString())) {
-                throw new RuntimeException(
+            while (isQueryStillRunning) {
+                getQueryExecutionResponse = athenaClient.getQueryExecution(getQueryExecutionRequest);
+                String queryState = getQueryExecutionResponse.queryExecution().status().state().toString();
+                if (queryState.equals(QueryExecutionState.FAILED.toString())) {
+                    throw new AthenaQueryException(
                         "The Amazon Athena query failed to run with error message: " + getQueryExecutionResponse
                                 .queryExecution().status().stateChangeReason());
-            } else if (queryState.equals(QueryExecutionState.CANCELLED.toString())) {
-                throw new RuntimeException("The Amazon Athena query was cancelled.");
-            } else if (queryState.equals(QueryExecutionState.SUCCEEDED.toString())) {
-                isQueryStillRunning = false;
-            } else if(Duration.ofNanos(System.nanoTime() - startedAt).compareTo(properties.queryTimeout())>=0){
-                throw new IllegalStateException("Athena query timed out");
+                } else if (queryState.equals(QueryExecutionState.CANCELLED.toString())) {
+                    throw new AthenaQueryException("The Amazon Athena query was cancelled.");
+                } else if (queryState.equals(QueryExecutionState.SUCCEEDED.toString())) {
+                    isQueryStillRunning = false;
+                } else if(Duration.ofNanos(System.nanoTime() - startedAt).compareTo(properties.queryTimeout())>=0){
+                    stopTimedOutQuery(queryExecutionId);
+                    throw new AthenaQueryTimeoutException("Athena query timed out");
 
-            }else {
-                // Sleep an amount of time before retrying again.
-                Thread.sleep(properties.sleep());
+                }else {
+                    // Sleep an amount of time before. retrying again.
+                    Thread.sleep(properties.sleep());
+
+                }
             }
+        }catch(InterruptedException e){
+            Thread.currentThread().interrupt();
+            throw e;
+        }
+
+    }
+
+    private void stopTimedOutQuery(String queryExecutionId) {
+        try {
+            athenaClient.stopQueryExecution(StopQueryExecutionRequest.builder()
+                    .queryExecutionId(queryExecutionId)
+                    .build());
+        } catch (RuntimeException exception) {
+            logger.warn("Could not stop timed out Athena query {}", queryExecutionId, exception);
         }
     }
 

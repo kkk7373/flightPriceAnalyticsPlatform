@@ -114,6 +114,7 @@ Ignav API Keyはコードへ直接記述せず、実行環境から参照しま�
 - Athena `StartQueryExecution`
 - Athena `GetQueryExecution`
 - Athena `GetQueryResults`
+- Athena `StopQueryExecution`（クエリ待機タイムアウト時）
 - Athena Query Result用S3へのアクセス
 - Glue Data CatalogのRead
 
@@ -133,4 +134,5 @@ CloudWatchで以下を監視します。
 | Ignav API | Lambdaを失敗として終了し、Glue Jobを起動しない |
 | S3 raw保存 | Lambdaを失敗として終了し、Glue Jobを起動しない |
 | Glue Job | Processedデータ生成失敗としてCloudWatch Logsへ記録する |
-| Athena Query | Backendで検知し、Frontendへ適切なError Responseを返す |
+| Athena Query | 失敗・キャンセル・SDKエラー・結果変換失敗はHTTP `502`、クエリ待機タイムアウトは停止を試みてHTTP `504`のProblem Detailを返す |
+| Backend内部処理 | SQL読み込み失敗はHTTP `500`、処理中断はHTTP `503`、その他の予期しない例外はHTTP `500`のProblem Detailを返す |
