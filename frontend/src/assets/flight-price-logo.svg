@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Flight price analytics logo</title>
+  <desc id="desc">A price chart connects to an aircraft, combining airfare analysis and flight. Transparent background.</desc>
+  <defs>
+    <linearGradient id="flight-blue" x1="40" y1="196" x2="216" y2="43" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2454E6"/>
+      <stop offset="0.55" stop-color="#147DED"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#flight-blue)">
+    <path d="M40 196 L80 151 L105 160 L142 123" fill="none" stroke="url(#flight-blue)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M215.89 47.11 C219.43 50.64 215.18 57.71 209.53 63.37 L191.85 81.05 L201.04 129.84 L193.26 137.62 L174.88 98.02 L155.08 117.82 L156.49 133.38 L150.84 139.03 L141.64 121.36 L123.97 112.16 L129.62 106.51 L145.18 107.92 L164.98 88.12 L125.38 69.74 L133.16 61.96 L181.95 71.15 L199.63 53.47 C205.28 47.82 212.35 43.57 215.89 47.11Z"/>
+  </g>
+  <circle cx="40" cy="196" r="10" fill="#2454E6"/>
+</svg>

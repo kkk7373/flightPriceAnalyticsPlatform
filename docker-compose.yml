@@ -1,6 +1,7 @@
 services:
   frontend:
     container_name: frontend
+    command: npm run dev -- --host 0.0.0.0
     environment:
       - BACKEND_SERVER=http://backend:8080
     ports:
@@ -15,6 +16,8 @@ services:
 
   backend:
     container_name: backend
+    command: sh ./mvnw spring-boot:run
+    working_dir: /workspace/backend/backend
     env_file:
       - path: ./backend/backend/.env
         required: false
